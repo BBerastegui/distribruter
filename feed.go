@@ -6,32 +6,49 @@ import (
 	"flag"
 	"log"
 	"os"
+	"os/signal"
 	"regexp"
+	"syscall"
 	"time"
 
 	"github.com/jroimartin/rpcmq"
 )
 
-var TargetUrl string
+var TargetUrl, Charset string
+var StringSize int
 
 func main() {
 	// Command line options
+
 	urlPtr := flag.String("u", "", "Target url.")
+	charsetPtr := flag.String("charset", "", "Charset to generate random urls.")
+	stringSizePtr := flag.Int("size", 0, "Size of the random string.")
+
 	flag.Parse()
 	if *urlPtr == "" {
 		panic("[!] Empty url.")
 		os.Exit(1)
 	}
+	if *charsetPtr == "" {
+		panic("[!] Empty charset.")
+		os.Exit(1)
+	}
+	if *stringSizePtr == 0 {
+		panic("[!] Select a string size.")
+		os.Exit(1)
+	}
+
 	TargetUrl = *urlPtr
+	Charset = *charsetPtr
+	StringSize = *stringSizePtr
 	// END Command line options
 
 	c := rpcmq.NewClient("amqp://localhost:5672",
-		"rcp-queue", "rpc-client", "rpc-exchange", "fanout")
+		"rcp-queue", "rpc-client", "rpc-exchange", "direct")
 	if err := c.Init(); err != nil {
 		log.Fatalf("Init: %v", err)
 	}
 	defer c.Shutdown()
-
 	// Keep getting results
 	go func() {
 		for r := range c.Results() {
@@ -42,10 +59,15 @@ func main() {
 			log.Printf("Received: %v (%v)\n", string(r.Data), r.UUID)
 		}
 	}()
-
-	go feedHttpBruter(*c)
-
-	<-time.After(600 * time.Second)
+	for i := 0; i < 10; i++ {
+		feedHttpBruter(*c)
+		<-time.After(10 * time.Second)
+	}
+	// Wait until sigkill (It'll keep waiting for results)
+	ctrlC := make(chan os.Signal, 1)
+	signal.Notify(ctrlC, os.Interrupt)
+	signal.Notify(ctrlC, syscall.SIGTERM)
+	<-ctrlC
 }
 
 func feedHttpBruter(c rpcmq.Client) {
@@ -56,7 +78,7 @@ func feedHttpBruter(c rpcmq.Client) {
 	if err != nil {
 		log.Println("Call:", err)
 	}
-	log.Printf("Sent: httpBruter(%v) (%v)\n", string(data), uuid)
+	log.Printf("Sent: httpBruter() items set with id: (%v)\n", uuid)
 	//<-time.After(500 * time.Millisecond)
 }
 
@@ -72,7 +94,7 @@ func generateUrls(urlTemplate string) []byte {
 	match := injRegex.FindStringSubmatch(urlTemplate)
 
 	// Generate URLs (Random from pattern)
-	for _, u := range randomString("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890", 44, 1000) {
+	for _, u := range randomString(Charset, StringSize, 1000) {
 		urlsS.Urls = append(urlsS.Urls, match[1]+u+match[2])
 	}
 	results, _ := json.Marshal(urlsS)

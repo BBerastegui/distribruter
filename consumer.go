@@ -14,7 +14,9 @@ import (
 
 func main() {
 	s := rpcmq.NewServer("amqp://localhost:5672",
-		"rcp-queue", "rpc-exchange", "fanout")
+		"rcp-queue", "rpc-exchange", "direct")
+	// Run only one parallel task.
+	s.Parallel = 1
 	if err := s.Register("httpBruter", httpBruter); err != nil {
 		log.Fatalf("Register: %v", err)
 	}
@@ -48,7 +50,7 @@ func httpBruter(id string, data []byte) ([]byte, error) {
 		simult <- u
 		go func() {
 			wg.Add(1)
-			fmt.Println("Querying: ", u)
+			//			fmt.Printf("\rQuerying: %v", u)
 			req, err := http.NewRequest("GET", u, nil)
 			req.Header.Set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/43.0.2357.65 Safari/537.36")
 			response, err := client.Do(req)
