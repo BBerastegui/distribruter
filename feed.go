@@ -49,21 +49,12 @@ func main() {
 		log.Fatalf("Init: %v", err)
 	}
 	defer c.Shutdown()
-	// Keep getting results
-	go func() {
-		for r := range c.Results() {
-			if r.Err != "" {
-				log.Printf("Received error: %v (%v)", r.Err, r.UUID)
-				continue
-			}
-			log.Printf("Received: %v (%v)\n", string(r.Data), r.UUID)
-		}
-	}()
+	// Send 10 sets of 1000 URLs.
 	for i := 0; i < 10; i++ {
 		feedHttpBruter(*c)
 		<-time.After(10 * time.Second)
 	}
-	// Wait until sigkill (It'll keep waiting for results)
+	// Wait until sigkill.
 	ctrlC := make(chan os.Signal, 1)
 	signal.Notify(ctrlC, os.Interrupt)
 	signal.Notify(ctrlC, syscall.SIGTERM)
